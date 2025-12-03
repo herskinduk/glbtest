@@ -731,10 +731,14 @@
       const startTarget = controls.target.clone();
       const startTime = performance.now();
       
-      // Cancel any existing animation
+      // Cancel any existing animation and re-enable controls
       if (cameraAnimation) {
         cancelAnimationFrame(cameraAnimation);
+        controls.enabled = true;
       }
+      
+      // Disable controls during animation
+      controls.enabled = false;
       
       function animateCamera() {
         const elapsed = performance.now() - startTime;
@@ -754,6 +758,7 @@
           cameraAnimation = requestAnimationFrame(animateCamera);
         } else {
           cameraAnimation = null;
+          controls.enabled = true; // Re-enable controls after animation
         }
       }
       
@@ -884,6 +889,28 @@
       document.addEventListener('mouseup', () => {
         if (isAdjustingHeight) {
           isAdjustingHeight = false;
+          controls.enabled = true;
+        }
+      });
+      
+      // Safeguard: re-enable controls if mouse leaves window or shift is released
+      document.addEventListener('mouseleave', () => {
+        if (isAdjustingHeight) {
+          isAdjustingHeight = false;
+          controls.enabled = true;
+        }
+      });
+      
+      document.addEventListener('keyup', (e) => {
+        if (e.key === 'Shift' && isAdjustingHeight) {
+          isAdjustingHeight = false;
+          controls.enabled = true;
+        }
+      });
+      
+      // Extra safeguard: ensure controls are enabled when clicking on canvas without shift
+      renderer.domElement.addEventListener('mousedown', (e) => {
+        if (!e.shiftKey && !isAddingAnnotation) {
           controls.enabled = true;
         }
       });
