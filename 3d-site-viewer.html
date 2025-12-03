@@ -475,6 +475,13 @@
     let isAdjustingHeight = false;
     let lastMouseY = 0;
     
+    // Saved camera position from URL
+    let savedCameraPos = null;
+    let savedCameraTarget = null;
+    
+    // Camera animation state
+    let cameraAnimation = null;
+    
     // DOM elements
     const container = document.getElementById('container');
     const dropZone = document.getElementById('drop-zone');
@@ -585,7 +592,7 @@
         loadModel(urlModel);
       }
       
-      // Parse camera position
+      // Parse and SAVE camera position (apply after model loads)
       const cx = parseFloat(params.get('cx'));
       const cy = parseFloat(params.get('cy'));
       const cz = parseFloat(params.get('cz'));
@@ -594,11 +601,10 @@
       const tz = parseFloat(params.get('tz'));
       
       if (!isNaN(cx) && !isNaN(cy) && !isNaN(cz)) {
-        camera.position.set(cx, cy, cz);
+        savedCameraPos = new THREE.Vector3(cx, cy, cz);
         if (!isNaN(tx) && !isNaN(ty) && !isNaN(tz)) {
-          controls.target.set(tx, ty, tz);
+          savedCameraTarget = new THREE.Vector3(tx, ty, tz);
         }
-        controls.update();
       }
       
       // Parse annotations
@@ -701,16 +707,57 @@
       
       scene.add(model);
       
-      // Update camera
+      // Set initial camera position (default view)
       controls.target.set(0, 0, 0);
-      camera.position.set(maxDim * scale, maxDim * scale, maxDim * scale);
+      camera.position.set(maxDim * scale * 1.5, maxDim * scale * 1.5, maxDim * scale * 1.5);
       controls.update();
+      
+      // If we have saved camera position from URL, animate to it
+      if (savedCameraPos) {
+        setTimeout(() => {
+          flyToCamera(savedCameraPos, savedCameraTarget || new THREE.Vector3(0, 0, 0), 1500);
+        }, 300);
+      }
       
       // Hide drop zone, enable buttons
       dropZone.style.display = 'none';
       addAnnotationBtn.disabled = false;
       showLoading(false);
       infoPanel.style.display = 'block';
+    }
+    
+    function flyToCamera(targetPos, targetLookAt, duration = 1000) {
+      const startPos = camera.position.clone();
+      const startTarget = controls.target.clone();
+      const startTime = performance.now();
+      
+      // Cancel any existing animation
+      if (cameraAnimation) {
+        cancelAnimationFrame(cameraAnimation);
+      }
+      
+      function animateCamera() {
+        const elapsed = performance.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Ease out cubic for smooth deceleration
+        const eased = 1 - Math.pow(1 - progress, 3);
+        
+        // Interpolate position
+        camera.position.lerpVectors(startPos, targetPos, eased);
+        
+        // Interpolate target
+        controls.target.lerpVectors(startTarget, targetLookAt, eased);
+        controls.update();
+        
+        if (progress < 1) {
+          cameraAnimation = requestAnimationFrame(animateCamera);
+        } else {
+          cameraAnimation = null;
+        }
+      }
+      
+      animateCamera();
     }
     
     function showLoading(show) {
@@ -937,7 +984,14 @@
           // Fly to annotation
           if (selectedAnnotation !== null) {
             const ann = annotations[selectedAnnotation];
-            controls.target.set(ann.x, ann.y, ann.z);
+            const targetLookAt = new THREE.Vector3(ann.x, ann.y, ann.z);
+            
+            // Calculate camera position: offset from annotation based on current distance
+            const currentDist = camera.position.distanceTo(controls.target);
+            const offset = new THREE.Vector3(currentDist * 0.5, currentDist * 0.3, currentDist * 0.5);
+            const targetPos = targetLookAt.clone().add(offset);
+            
+            flyToCamera(targetPos, targetLookAt, 800);
           }
         });
       });
