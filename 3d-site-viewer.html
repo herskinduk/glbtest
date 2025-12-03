@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Site Viewer</title>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; overflow: hidden; }
+    
+    #container { width: 100vw; height: 100vh; }
+    
+    #ui-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+    }
+    
+    #header {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      background: rgba(255,255,255,0.95);
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      pointer-events: auto;
+      z-index: 100;
+    }
+    
+    #header h1 { font-size: 18px; color: #1f2937; }
+    
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-success { background: #16a34a; color: white; }
+    .btn-success:hover { background: #15803d; }
+    .btn-secondary { background: #e5e7eb; color: #374151; }
+    .btn-secondary:hover { background: #d1d5db; }
+    .btn-danger { background: #dc2626; color: white; }
+    .btn-danger:hover { background: #b91c1c; }
+    .btn:disabled { background: #9ca3af; cursor: not-allowed; }
+    
+    #sidebar {
+      position: absolute;
+      top: 60px;
+      right: 0;
+      width: 320px;
+      bottom: 0;
+      background: rgba(255,255,255,0.98);
+      box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      pointer-events: auto;
+    }
+    
+    #annotations-panel {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+    
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    
+    .panel-header h2 { font-size: 16px; color: #1f2937; }
+    
+    .annotation-item {
+      background: #f3f4f6;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .annotation-item:hover { background: #e5e7eb; }
+    .annotation-item.selected { background: #dbeafe; border: 1px solid #93c5fd; }
+    
+    .annotation-item .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    
+    .annotation-number {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 24px;
+      height: 24px;
+      background: #2563eb;
+      color: white;
+      border-radius: 50%;
+      font-size: 12px;
+      margin-right: 8px;
+    }
+    
+    .annotation-text { font-size: 14px; color: #374151; }
+    
+    .delete-btn {
+      background: none;
+      border: none;
+      color: #dc2626;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+      padding: 4px;
+    }
+    
+    .delete-btn:hover { color: #b91c1c; }
+    
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #9ca3af;
+      font-size: 14px;
+    }
+    
+    #share-panel {
+      border-top: 1px solid #e5e7eb;
+      padding: 16px;
+    }
+    
+    #share-url {
+      width: 100%;
+      height: 80px;
+      padding: 8px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 11px;
+      resize: none;
+      margin-top: 8px;
+      background: #f9fafb;
+    }
+    
+    #drop-zone {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: white;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+      text-align: center;
+      pointer-events: auto;
+      max-width: 400px;
+    }
+    
+    #drop-zone.dragging { 
+      background: #eff6ff;
+      border: 2px dashed #2563eb;
+    }
+    
+    #drop-zone h2 { color: #374151; margin-bottom: 16px; }
+    #drop-zone p { color: #6b7280; margin-bottom: 16px; font-size: 14px; }
+    
+    #file-input { display: none; }
+    
+    #url-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+    
+    #help-bar {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 320px;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 10px 20px;
+      font-size: 13px;
+      pointer-events: auto;
+    }
+    
+    #info-panel {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(255,255,255,0.95);
+      padding: 16px 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+      font-size: 13px;
+      pointer-events: auto;
+      max-width: 280px;
+    }
+    
+    #info-panel h3 {
+      margin: 0 0 12px 0;
+      font-size: 14px;
+      color: #1f2937;
+    }
+    
+    #info-panel .control-row {
+      display: flex;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    
+    #info-panel .control-row:last-child {
+      margin-bottom: 0;
+    }
+    
+    #info-panel .key {
+      background: #e5e7eb;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
+      color: #374151;
+      margin-right: 10px;
+      min-width: 90px;
+      text-align: center;
+    }
+    
+    #info-panel .desc {
+      color: #6b7280;
+    }
+    
+    #info-panel .close-btn {
+      position: absolute;
+      top: 8px;
+      right: 10px;
+      background: none;
+      border: none;
+      font-size: 18px;
+      cursor: pointer;
+      color: #9ca3af;
+    }
+    
+    #info-panel .close-btn:hover {
+      color: #374151;
+    }
+    
+    #annotation-dialog {
+      position: absolute;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      pointer-events: auto;
+      display: none;
+      z-index: 200;
+    }
+    
+    #annotation-dialog input {
+      width: 280px;
+      padding: 10px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 14px;
+      margin: 12px 0;
+    }
+    
+    #annotation-dialog .buttons { display: flex; gap: 8px; }
+    
+    #loading {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(255,255,255,0.9);
+      padding: 20px 40px;
+      border-radius: 8px;
+      font-size: 14px;
+      display: none;
+    }
+    
+    #error-message {
+      position: absolute;
+      top: 80px;
+      left: 20px;
+      background: #fef2f2;
+      color: #dc2626;
+      padding: 12px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      display: none;
+      pointer-events: auto;
+    }
+    
+    .mode-indicator {
+      position: absolute;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #16a34a;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      display: none;
+      pointer-events: auto;
+    }
+    
+    /* Annotation labels in 3D */
+    .annotation-label {
+      position: absolute;
+      background: white;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      pointer-events: auto;
+      white-space: nowrap;
+      transform: translate(-50%, -100%);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    
+    .annotation-label:hover {
+      background: #f3f4f6;
+    }
+    
+    .annotation-label.selected {
+      background: #dbeafe;
+      box-shadow: 0 0 0 2px #2563eb, 0 2px 8px rgba(0,0,0,0.2);
+    }
+    
+    .annotation-label::after {
+      content: '';
+      position: absolute;
+      bottom: -6px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-left: 6px solid transparent;
+      border-right: 6px solid transparent;
+      border-top: 6px solid white;
+    }
+    
+    .annotation-label.selected::after {
+      border-top-color: #dbeafe;
+    }
+  </style>
+</head>
+<body>
+  <div id="container"></div>
+  
+  <div id="ui-overlay">
+    <div id="header">
+      <h1>3D Site Viewer</h1>
+      <div style="display: flex; gap: 8px;">
+        <button id="help-btn" class="btn btn-secondary">Help</button>
+      </div>
+    </div>
+    
+    <div id="sidebar">
+      <div id="annotations-panel">
+        <div class="panel-header">
+          <h2>Annotations</h2>
+          <button id="add-annotation-btn" class="btn btn-primary" disabled>+ Add</button>
+        </div>
+        <div id="annotations-list">
+          <div class="empty-state">
+            No annotations yet.<br>Load a model, then click "Add" to place markers.
+          </div>
+        </div>
+      </div>
+      
+      <div id="share-panel">
+        <button id="generate-link-btn" class="btn btn-success" style="width: 100%;">Generate Share Link</button>
+        <textarea id="share-url" placeholder="Click 'Generate Share Link' to create a shareable URL with your current view and annotations..." readonly></textarea>
+        <button id="copy-link-btn" class="btn btn-secondary" style="width: 100%; margin-top: 8px;">Copy to Clipboard</button>
+      </div>
+    </div>
+    
+    <div id="drop-zone">
+      <h2>Load 3D Model</h2>
+      <p>Drag & drop a GLB/GLTF file here</p>
+      <label class="btn btn-primary" for="file-input">Browse Files</label>
+      <input type="file" id="file-input" accept=".glb,.gltf">
+      <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+        <p style="margin-bottom: 8px;">Or load from URL:</p>
+        <input type="text" id="url-input" placeholder="https://example.com/model.glb">
+        <button id="load-url-btn" class="btn btn-primary" style="width: 100%; margin-top: 8px;">Load URL</button>
+      </div>
+    </div>
+    
+    <div id="help-bar" style="display: none;">
+      <strong>Controls:</strong> Left-click + drag = Rotate &nbsp;|&nbsp; Right-click + drag = Pan &nbsp;|&nbsp; Scroll = Zoom &nbsp;|&nbsp; Press H to toggle this help
+    </div>
+    
+    <div id="info-panel" style="display: none;">
+      <button class="close-btn" id="close-info-btn">×</button>
+      <h3>🎮 Navigation Controls</h3>
+      <div class="control-row">
+        <span class="key">Left-click + drag</span>
+        <span class="desc">Rotate view</span>
+      </div>
+      <div class="control-row">
+        <span class="key">Right-click + drag</span>
+        <span class="desc">Pan view</span>
+      </div>
+      <div class="control-row">
+        <span class="key">Scroll wheel</span>
+        <span class="desc">Zoom in/out</span>
+      </div>
+      <div class="control-row">
+        <span class="key">Shift + drag</span>
+        <span class="desc">Adjust label height</span>
+      </div>
+      <div class="control-row">
+        <span class="key">H</span>
+        <span class="desc">Toggle this panel</span>
+      </div>
+    </div>
+    
+    <div id="annotation-dialog">
+      <div style="font-size: 14px; color: #6b7280;">Add annotation:</div>
+      <input type="text" id="annotation-text-input" placeholder="Enter description...">
+      <div class="buttons">
+        <button id="confirm-annotation-btn" class="btn btn-primary">Add</button>
+        <button id="cancel-annotation-btn" class="btn btn-secondary">Cancel</button>
+      </div>
+    </div>
+    
+    <div class="mode-indicator" id="mode-indicator">Click on the model to place annotation</div>
+    
+    <div id="loading">Loading model...</div>
+    <div id="error-message"></div>
+  </div>
+  
+  <div id="labels-container"></div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+    
+    // State
+    let scene, camera, renderer, controls;
+    let model = null;
+    let annotations = [];
+    let annotationMarkers = [];
+    let isAddingAnnotation = false;
+    let pendingPosition = null;
+    let selectedAnnotation = null;
+    let modelUrl = '';
+    let isAdjustingHeight = false;
+    let lastMouseY = 0;
+    
+    // DOM elements
+    const container = document.getElementById('container');
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const urlInput = document.getElementById('url-input');
+    const loadUrlBtn = document.getElementById('load-url-btn');
+    const addAnnotationBtn = document.getElementById('add-annotation-btn');
+    const annotationsList = document.getElementById('annotations-list');
+    const annotationDialog = document.getElementById('annotation-dialog');
+    const annotationTextInput = document.getElementById('annotation-text-input');
+    const confirmAnnotationBtn = document.getElementById('confirm-annotation-btn');
+    const cancelAnnotationBtn = document.getElementById('cancel-annotation-btn');
+    const modeIndicator = document.getElementById('mode-indicator');
+    const generateLinkBtn = document.getElementById('generate-link-btn');
+    const shareUrlTextarea = document.getElementById('share-url');
+    const copyLinkBtn = document.getElementById('copy-link-btn');
+    const helpBtn = document.getElementById('help-btn');
+    const helpBar = document.getElementById('help-bar');
+    const infoPanel = document.getElementById('info-panel');
+    const closeInfoBtn = document.getElementById('close-info-btn');
+    const loadingEl = document.getElementById('loading');
+    const errorEl = document.getElementById('error-message');
+    const labelsContainer = document.getElementById('labels-container');
+    
+    // Initialize Three.js
+    function init() {
+      // Scene
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xf0f4f8);
+      
+      // Camera
+      camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 10000);
+      camera.position.set(50, 50, 50);
+      
+      // Renderer
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      container.appendChild(renderer.domElement);
+      
+      // Controls
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.screenSpacePanning = true;
+      
+      // Lighting
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambientLight);
+      
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      directionalLight.position.set(100, 100, 50);
+      directionalLight.castShadow = true;
+      directionalLight.shadow.mapSize.width = 2048;
+      directionalLight.shadow.mapSize.height = 2048;
+      scene.add(directionalLight);
+      
+      const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+      fillLight.position.set(-50, 50, -50);
+      scene.add(fillLight);
+      
+      // Grid
+      const gridHelper = new THREE.GridHelper(200, 50, 0x888888, 0xcccccc);
+      gridHelper.material.forEach ? gridHelper.material.forEach(m => { m.opacity = 0.5; m.transparent = true; }) 
+        : (gridHelper.material.opacity = 0.5, gridHelper.material.transparent = true);
+      scene.add(gridHelper);
+      
+      // Parse URL parameters
+      parseUrlParams();
+      
+      // Animation loop
+      animate();
+      
+      // Event listeners
+      window.addEventListener('resize', onWindowResize);
+      setupEventListeners();
+    }
+    
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      
+      // Prevent camera from going below ground level
+      if (camera.position.y < 1) {
+        camera.position.y = 1;
+      }
+      
+      renderer.render(scene, camera);
+      updateLabels();
+    }
+    
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+    
+    function parseUrlParams() {
+      const params = new URLSearchParams(window.location.search);
+      
+      // Load model URL
+      const urlModel = params.get('model');
+      if (urlModel) {
+        modelUrl = urlModel;
+        urlInput.value = urlModel;
+        loadModel(urlModel);
+      }
+      
+      // Parse camera position
+      const cx = parseFloat(params.get('cx'));
+      const cy = parseFloat(params.get('cy'));
+      const cz = parseFloat(params.get('cz'));
+      const tx = parseFloat(params.get('tx'));
+      const ty = parseFloat(params.get('ty'));
+      const tz = parseFloat(params.get('tz'));
+      
+      if (!isNaN(cx) && !isNaN(cy) && !isNaN(cz)) {
+        camera.position.set(cx, cy, cz);
+        if (!isNaN(tx) && !isNaN(ty) && !isNaN(tz)) {
+          controls.target.set(tx, ty, tz);
+        }
+        controls.update();
+      }
+      
+      // Parse annotations
+      const urlAnnotations = params.get('annotations');
+      if (urlAnnotations) {
+        try {
+          annotations = JSON.parse(decodeURIComponent(urlAnnotations));
+          updateAnnotationsList();
+          updateAnnotationMarkers();
+        } catch (e) {
+          console.error('Failed to parse annotations');
+        }
+      }
+    }
+    
+    function loadModel(url) {
+      showLoading(true);
+      hideError();
+      
+      if (model) {
+        scene.remove(model);
+        model = null;
+      }
+      
+      const loader = new GLTFLoader();
+      loader.load(
+        url,
+        (gltf) => {
+          onModelLoaded(gltf);
+        },
+        (progress) => {
+          const pct = progress.total ? Math.round(progress.loaded / progress.total * 100) : 0;
+          loadingEl.textContent = `Loading model... ${pct}%`;
+        },
+        (error) => {
+          console.error('Error loading model:', error);
+          showError('Failed to load model. Check the URL or file format.');
+          showLoading(false);
+        }
+      );
+    }
+    
+    function loadModelFromFile(file) {
+      showLoading(true);
+      hideError();
+      
+      if (model) {
+        scene.remove(model);
+        model = null;
+      }
+      
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const arrayBuffer = e.target.result;
+        const loader = new GLTFLoader();
+        
+        loader.parse(
+          arrayBuffer,
+          '',
+          (gltf) => {
+            onModelLoaded(gltf);
+            modelUrl = ''; // Local file, can't share URL
+          },
+          (error) => {
+            console.error('Error parsing model:', error);
+            showError('Failed to parse model. Check the file format.');
+            showLoading(false);
+          }
+        );
+      };
+      
+      reader.onerror = () => {
+        showError('Failed to read file.');
+        showLoading(false);
+      };
+      
+      reader.readAsArrayBuffer(file);
+    }
+    
+    function onModelLoaded(gltf) {
+      model = gltf.scene;
+      
+      // Center and scale
+      const box = new THREE.Box3().setFromObject(model);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const scale = 50 / maxDim;
+      
+      model.scale.setScalar(scale);
+      model.position.sub(center.multiplyScalar(scale));
+      
+      // Enable shadows
+      model.traverse((child) => {
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+      
+      scene.add(model);
+      
+      // Update camera
+      controls.target.set(0, 0, 0);
+      camera.position.set(maxDim * scale, maxDim * scale, maxDim * scale);
+      controls.update();
+      
+      // Hide drop zone, enable buttons
+      dropZone.style.display = 'none';
+      addAnnotationBtn.disabled = false;
+      showLoading(false);
+      infoPanel.style.display = 'block';
+    }
+    
+    function showLoading(show) {
+      loadingEl.style.display = show ? 'block' : 'none';
+    }
+    
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.style.display = 'block';
+    }
+    
+    function hideError() {
+      errorEl.style.display = 'none';
+    }
+    
+    function setupEventListeners() {
+      // File input
+      fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          loadModelFromFile(file);
+        }
+      });
+      
+      // Drag and drop
+      dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropZone.classList.add('dragging');
+      });
+      
+      dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('dragging');
+      });
+      
+      dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.classList.remove('dragging');
+        const file = e.dataTransfer.files[0];
+        if (file && file.name.match(/\.(glb|gltf)$/i)) {
+          loadModelFromFile(file);
+        } else {
+          showError('Please drop a .glb or .gltf file');
+        }
+      });
+      
+      // URL loading
+      loadUrlBtn.addEventListener('click', () => {
+        const url = urlInput.value.trim();
+        if (url) {
+          modelUrl = url;
+          loadModel(url);
+        }
+      });
+      
+      urlInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          loadUrlBtn.click();
+        }
+      });
+      
+      // Add annotation mode
+      addAnnotationBtn.addEventListener('click', () => {
+        isAddingAnnotation = !isAddingAnnotation;
+        modeIndicator.style.display = isAddingAnnotation ? 'block' : 'none';
+        addAnnotationBtn.textContent = isAddingAnnotation ? 'Cancel' : '+ Add';
+        addAnnotationBtn.classList.toggle('btn-danger', isAddingAnnotation);
+        addAnnotationBtn.classList.toggle('btn-primary', !isAddingAnnotation);
+      });
+      
+      // Click to place annotation
+      renderer.domElement.addEventListener('click', (e) => {
+        if (!isAddingAnnotation || !model) return;
+        
+        const rect = renderer.domElement.getBoundingClientRect();
+        const mouse = new THREE.Vector2(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1
+        );
+        
+        const raycaster = new THREE.Raycaster();
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObject(model, true);
+        
+        if (intersects.length > 0) {
+          pendingPosition = intersects[0].point.clone();
+          pendingPosition.y += 0.2; // Slight offset above surface
+          annotationDialog.style.display = 'block';
+          annotationTextInput.value = '';
+          annotationTextInput.focus();
+        }
+      });
+      
+      // Confirm annotation
+      confirmAnnotationBtn.addEventListener('click', addAnnotation);
+      annotationTextInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') addAnnotation();
+      });
+      
+      // Height adjustment with Shift + drag
+      document.addEventListener('mousedown', (e) => {
+        if (e.shiftKey && selectedAnnotation !== null) {
+          isAdjustingHeight = true;
+          lastMouseY = e.clientY;
+          controls.enabled = false; // Disable orbit controls while adjusting
+          e.preventDefault();
+        }
+      });
+      
+      document.addEventListener('mousemove', (e) => {
+        if (isAdjustingHeight && selectedAnnotation !== null) {
+          const deltaY = lastMouseY - e.clientY;
+          lastMouseY = e.clientY;
+          
+          // Adjust height based on camera distance for consistent feel
+          const distance = camera.position.distanceTo(controls.target);
+          const heightDelta = deltaY * distance * 0.001;
+          
+          annotations[selectedAnnotation].y += heightDelta;
+          updateAnnotationMarkers();
+          e.preventDefault();
+        }
+      });
+      
+      document.addEventListener('mouseup', () => {
+        if (isAdjustingHeight) {
+          isAdjustingHeight = false;
+          controls.enabled = true;
+        }
+      });
+      
+      // Cancel annotation
+      cancelAnnotationBtn.addEventListener('click', () => {
+        annotationDialog.style.display = 'none';
+        pendingPosition = null;
+      });
+      
+      // Generate share link
+      generateLinkBtn.addEventListener('click', generateShareUrl);
+      
+      // Copy link
+      copyLinkBtn.addEventListener('click', () => {
+        shareUrlTextarea.select();
+        navigator.clipboard.writeText(shareUrlTextarea.value);
+        copyLinkBtn.textContent = 'Copied!';
+        setTimeout(() => copyLinkBtn.textContent = 'Copy to Clipboard', 2000);
+      });
+      
+      // Help toggle
+      helpBtn.addEventListener('click', () => {
+        infoPanel.style.display = infoPanel.style.display === 'none' ? 'block' : 'none';
+      });
+      
+      closeInfoBtn.addEventListener('click', () => {
+        infoPanel.style.display = 'none';
+      });
+      
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'h' || e.key === 'H') {
+          infoPanel.style.display = infoPanel.style.display === 'none' ? 'block' : 'none';
+        }
+        if (e.key === 'Escape') {
+          if (isAddingAnnotation) {
+            isAddingAnnotation = false;
+            modeIndicator.style.display = 'none';
+            addAnnotationBtn.textContent = '+ Add';
+            addAnnotationBtn.classList.remove('btn-danger');
+            addAnnotationBtn.classList.add('btn-primary');
+          }
+          annotationDialog.style.display = 'none';
+        }
+      });
+    }
+    
+    function addAnnotation() {
+      const text = annotationTextInput.value.trim();
+      if (!text || !pendingPosition) return;
+      
+      annotations.push({
+        x: pendingPosition.x,
+        y: pendingPosition.y,
+        z: pendingPosition.z,
+        text: text
+      });
+      
+      annotationDialog.style.display = 'none';
+      pendingPosition = null;
+      isAddingAnnotation = false;
+      modeIndicator.style.display = 'none';
+      addAnnotationBtn.textContent = '+ Add';
+      addAnnotationBtn.classList.remove('btn-danger');
+      addAnnotationBtn.classList.add('btn-primary');
+      
+      updateAnnotationsList();
+      updateAnnotationMarkers();
+    }
+    
+    function updateAnnotationsList() {
+      if (annotations.length === 0) {
+        annotationsList.innerHTML = '<div class="empty-state">No annotations yet.<br>Load a model, then click "Add" to place markers.</div>';
+        return;
+      }
+      
+      annotationsList.innerHTML = annotations.map((ann, i) => `
+        <div class="annotation-item ${selectedAnnotation === i ? 'selected' : ''}" data-index="${i}">
+          <div class="header">
+            <div>
+              <span class="annotation-number">${i + 1}</span>
+              <span class="annotation-text">${escapeHtml(ann.text)}</span>
+            </div>
+            <button class="delete-btn" data-index="${i}">×</button>
+          </div>
+        </div>
+      `).join('');
+      
+      // Event listeners for annotation items
+      annotationsList.querySelectorAll('.annotation-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          if (e.target.classList.contains('delete-btn')) return;
+          const idx = parseInt(item.dataset.index);
+          selectedAnnotation = selectedAnnotation === idx ? null : idx;
+          updateAnnotationsList();
+          updateAnnotationMarkers();
+          
+          // Fly to annotation
+          if (selectedAnnotation !== null) {
+            const ann = annotations[selectedAnnotation];
+            controls.target.set(ann.x, ann.y, ann.z);
+          }
+        });
+      });
+      
+      annotationsList.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.index);
+          annotations.splice(idx, 1);
+          if (selectedAnnotation === idx) selectedAnnotation = null;
+          else if (selectedAnnotation > idx) selectedAnnotation--;
+          updateAnnotationsList();
+          updateAnnotationMarkers();
+        });
+      });
+    }
+    
+    function updateAnnotationMarkers() {
+      // Remove existing markers
+      annotationMarkers.forEach(m => scene.remove(m));
+      annotationMarkers = [];
+      
+      // Remove existing labels
+      labelsContainer.innerHTML = '';
+      
+      annotations.forEach((ann, i) => {
+        // Create label element only (no 3D markers)
+        const label = document.createElement('div');
+        label.className = 'annotation-label' + (selectedAnnotation === i ? ' selected' : '');
+        label.innerHTML = `<strong>${i + 1}.</strong> ${escapeHtml(ann.text)}`;
+        label.dataset.index = i;
+        
+        // Click to select
+        label.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectedAnnotation = selectedAnnotation === i ? null : i;
+          updateAnnotationMarkers();
+          updateAnnotationsList();
+        });
+        
+        labelsContainer.appendChild(label);
+      });
+    }
+    
+    function updateLabels() {
+      const labels = labelsContainer.querySelectorAll('.annotation-label');
+      labels.forEach((label, i) => {
+        if (i >= annotations.length) return;
+        const ann = annotations[i];
+        const pos = new THREE.Vector3(ann.x, ann.y, ann.z);
+        pos.project(camera);
+        
+        const x = (pos.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-pos.y * 0.5 + 0.5) * window.innerHeight;
+        
+        // Update selected state
+        label.classList.toggle('selected', selectedAnnotation === i);
+        
+        // Hide if behind camera or off screen
+        if (pos.z > 1 || x < 0 || x > window.innerWidth - 320 || y < 60 || y > window.innerHeight) {
+          label.style.display = 'none';
+        } else {
+          label.style.display = 'block';
+          label.style.left = x + 'px';
+          label.style.top = y + 'px';
+        }
+      });
+    }
+    
+    function generateShareUrl() {
+      const params = new URLSearchParams();
+      
+      if (modelUrl && !modelUrl.startsWith('blob:')) {
+        params.set('model', modelUrl);
+      }
+      
+      params.set('cx', camera.position.x.toFixed(2));
+      params.set('cy', camera.position.y.toFixed(2));
+      params.set('cz', camera.position.z.toFixed(2));
+      params.set('tx', controls.target.x.toFixed(2));
+      params.set('ty', controls.target.y.toFixed(2));
+      params.set('tz', controls.target.z.toFixed(2));
+      
+      if (annotations.length > 0) {
+        params.set('annotations', encodeURIComponent(JSON.stringify(annotations)));
+      }
+      
+      const url = `${window.location.origin}${window.location.pathname}?${params.toString()}`;
+      shareUrlTextarea.value = url;
+      
+      if (modelUrl && modelUrl.startsWith('blob:')) {
+        shareUrlTextarea.value += '\n\n⚠️ Note: The model was loaded from a local file. To share, host the GLB file online and use ?model=URL';
+      }
+    }
+    
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    // Initialize
+    init();
+  </script>
+</body>
+</html>
